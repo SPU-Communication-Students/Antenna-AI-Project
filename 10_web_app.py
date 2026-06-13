@@ -357,11 +357,13 @@ def forward_best(lp, wp, shape_id, fwd, s_geo, s_perf, db):
 def forward_physics_first(lp, wp, shape_id, fwd, s_geo, s_perf, db, use_ml_refine=False):
     anc = forward_anchor(lp, wp, shape_id, db)
     if anc is None:
+        if fwd is None:
+            return None  # no ML model and no CSV anchor
         ml = forward_ml(lp, wp, shape_id, fwd, s_geo, s_perf)
         ml["engine"] = "ML-only (no CSV anchor)"
         return ml
     anc["engine"] = f'{anc.get("anchor_mode", "CSV")}-physics'
-    if not use_ml_refine:
+    if not use_ml_refine or fwd is None:
         return anc
     mixed = forward_best(lp, wp, shape_id, fwd, s_geo, s_perf, db)
     mixed["engine"] = f'{mixed.get("engine", "Hybrid")} + refine'
