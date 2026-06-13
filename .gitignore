@@ -9,3 +9,13 @@ myenv/
 processed_data.npz
 forward_model_v2_report.json
 s11_dip_specialist_report.json
+s11_dip_specialist.pkl
+s11_min_model.pkl
+forward_model_v2.pkl
+forward_model_v2_curve.pkl
+forward_model_v2_curve_shrunk.pkl
+antenna_data_cleaned.csv
+antenna_data_website.csv
+antenna_data.csv
+s11_dip_specialist_shrunk.pkl.gz
+shrink_specialist.py

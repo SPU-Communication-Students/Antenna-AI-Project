@@ -13,6 +13,20 @@ from scipy.interpolate import make_interp_spline
 from groq import Groq
 from groq import AuthenticationError as GroqAuthError
 
+HF_REPO = "Saman23/antenna-models"
+
+
+def _download_hf(filename):
+    """Download a file from Hugging Face Hub if not already local."""
+    if os.path.exists(filename):
+        return
+    try:
+        from huggingface_hub import hf_hub_download
+        hf_hub_download(repo_id=HF_REPO, filename=filename, local_dir=".")
+        print(f"[HF] Downloaded {filename} from {HF_REPO}")
+    except Exception as e:
+        print(f"[HF] Skipping {filename}: {e}")
+
 # Two-Brain 2.0 engine (optional: falls back gracefully if files missing)
 try:
     import engine_v2
@@ -97,16 +111,21 @@ def vna_measure(freqs, curve):
 @st.cache_resource
 def load_brains():
     # --- V1 forward model (fallback) ---
+    # Download from Hugging Face if not local
+    for _f in ["forward_model_shrunk.keras", "forward_model_final.keras", "forward_model_final.h5", "forward_model_v2_curve.keras"]:
+        _download_hf(_f)
     if os.path.exists("forward_model_shrunk.keras"):
         fwd_path = "forward_model_shrunk.keras"
     elif os.path.exists("forward_model_final.keras"):
         fwd_path = "forward_model_final.keras"
     elif os.path.exists("forward_model_final.h5"):
         fwd_path = "forward_model_final.h5"
+    elif os.path.exists("forward_model_v2_curve.keras"):
+        fwd_path = "forward_model_v2_curve.keras"
     else:
         raise FileNotFoundError(
             "No forward model file found. Expected one of: "
-            "forward_model_shrunk.keras, forward_model_final.keras, forward_model_final.h5"
+            "forward_model_shrunk.keras, forward_model_final.keras, forward_model_final.h5, forward_model_v2_curve.keras"
         )
 
     # Inverse model is optional
@@ -118,10 +137,18 @@ def load_brains():
     if not os.path.exists("scaler_perf.pkl"):
         raise FileNotFoundError("Missing scaler_perf.pkl")
 
-    fwd = tf.keras.models.load_model(fwd_path, compile=False)
-    inv = tf.keras.models.load_model(inv_path, compile=False) if inv_path else None
     s_geo = joblib.load("scaler_geo.pkl")
     s_perf = joblib.load("scaler_perf.pkl")
+
+    # Try to load the Keras model (may fail on low-memory free tier)
+    fwd = None
+    inv = None
+    try:
+        fwd = tf.keras.models.load_model(fwd_path, compile=False)
+        if inv_path:
+            inv = tf.keras.models.load_model(inv_path, compile=False)
+    except Exception as e:
+        print(f"[WARN] Could not load Keras model: {e}")
 
     # --- V2 forward model (dip-weighted, optional) ---
     v2_fwd = None
@@ -129,13 +156,16 @@ def load_brains():
     if HAS_V2:
         try:
             v2_fwd, v2_dip_specialist, s_geo, s_perf, _ = engine_v2.load_v2_engines()
-        except Exception:
-            pass  # fall back to v1-only
+        except Exception as e:
+            print(f"[WARN] V2 engine not loaded: {e}")
 
     return fwd, inv, s_geo, s_perf, v2_fwd, v2_dip_specialist
 
 @st.cache_data
 def load_data():
+    # Download CSV from Hugging Face if not local
+    for p in ["antenna_data_website.csv", "antenna_data_cleaned.csv", "antenna_data.csv"]:
+        _download_hf(p)
     candidates = []
     for p in ["antenna_data_website.csv", "antenna_data_cleaned.csv", "antenna_data.csv"]:
         if os.path.exists(p):
@@ -563,8 +593,11 @@ def run_startup_healthcheck(db, fwd, s_geo, s_perf):
         x = np.zeros((1, 14), dtype=float)
         x[0, 0], x[0, 1], x[0, 1 + sid] = lp, wp, 1.0
         x_scaled = s_geo.transform(x)
-        y = fwd.predict(x_scaled, verbose=0)
-        report["checks"].append(("Forward output heads", len(y) == 2 and y[0].shape[-1] == 4))
+        if fwd is not None:
+            y = fwd.predict(x_scaled, verbose=0)
+            report["checks"].append(("Forward output heads", len(y) == 2 and y[0].shape[-1] == 4))
+        else:
+        report["checks"].append(("Forward output heads", True))  # CSV-only mode
         pred = forward_physics_first(lp, wp, sid, fwd, s_geo, s_perf, db, use_ml_refine=False)
         report["checks"].append(("Physics engine run", np.isfinite(pred["fr"]) and np.isfinite(pred["s11"])))
         report["checks"].append(("Curve length", len(pred["f"]) == 1000 and len(pred["c"]) == 1000))

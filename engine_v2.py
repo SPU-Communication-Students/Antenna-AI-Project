@@ -19,6 +19,20 @@ import numpy as np
 import joblib
 import tensorflow as tf
 
+HF_REPO = "Saman23/antenna-models"
+
+
+def _download_hf(filename):
+    """Download a file from Hugging Face Hub if not already local."""
+    if os.path.exists(filename):
+        return
+    try:
+        from huggingface_hub import hf_hub_download
+        hf_hub_download(repo_id=HF_REPO, filename=filename, local_dir=".")
+        print(f"[HF] Downloaded {filename} from {HF_REPO}")
+    except Exception as e:
+        print(f"[HF] Skipping {filename}: {e}")
+
 
 FREQS_RAW = np.linspace(1.0, 7.0, 151)
 
@@ -29,6 +43,8 @@ def load_v2_engines(model_dir=None):
         os.chdir(model_dir)
 
     main_path = "forward_model_v2_curve.keras"
+    if not os.path.exists(main_path):
+        _download_hf("forward_model_v2_curve.keras")
     if not os.path.exists(main_path):
         for alt in ("forward_model_shrunk.keras", "forward_model_final.keras", "forward_model_final.h5"):
             if os.path.exists(alt):
@@ -44,8 +60,13 @@ def load_v2_engines(model_dir=None):
     main = tf.keras.models.load_model(main_path, compile=False)
 
     dip = None
+    _download_hf("s11_dip_specialist.pkl")
     if os.path.exists("s11_dip_specialist.pkl"):
-        dip = joblib.load("s11_dip_specialist.pkl")
+        try:
+            dip = joblib.load("s11_dip_specialist.pkl")
+        except Exception as e:
+            print(f"[HF] Could not load specialist: {e}")
+            dip = None
 
     s_geo = joblib.load("scaler_geo.pkl")
     s_perf = joblib.load("scaler_perf.pkl")
