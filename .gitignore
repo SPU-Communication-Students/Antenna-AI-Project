@@ -1,0 +1,11 @@
+*.keras
+*.h5
+__pycache__/
+*.pyc
+venv/
+myenv/
+*.bat
+*.log
+processed_data.npz
+forward_model_v2_report.json
+s11_dip_specialist_report.json
