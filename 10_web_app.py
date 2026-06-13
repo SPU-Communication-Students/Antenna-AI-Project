@@ -601,8 +601,12 @@ def run_startup_healthcheck(db, fwd, s_geo, s_perf):
         else:
             report["checks"].append(("Forward output heads", True))  # CSV-only mode
         pred = forward_physics_first(lp, wp, sid, fwd, s_geo, s_perf, db, use_ml_refine=False)
-        report["checks"].append(("Physics engine run", np.isfinite(pred["fr"]) and np.isfinite(pred["s11"])))
-        report["checks"].append(("Curve length", len(pred["f"]) == 1000 and len(pred["c"]) == 1000))
+        if pred is not None:
+            report["checks"].append(("Physics engine run", np.isfinite(pred["fr"]) and np.isfinite(pred["s11"])))
+            report["checks"].append(("Curve length", len(pred["f"]) == 1000 and len(pred["c"]) == 1000))
+        else:
+            report["checks"].append(("Physics engine run", False))  # No CSV anchor and no ML model
+            report["checks"].append(("Curve length", False))
     except Exception:
         report["checks"].append(("Runtime exception", False))
     report["ok"] = all(v for _, v in report["checks"])
